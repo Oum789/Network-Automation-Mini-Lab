@@ -7,6 +7,16 @@ FortiGate over the FortiOS HTTPS API.
 
 ---
 
+## Topology
+
+![Two-site HQ + Branch lab topology](docs/topology.png)
+
+> HQ and Branch each run a redundant access / distribution layer behind a dual-ISP
+> FortiGate active/passive HA pair. The two sites are joined by an IPsec overlay running
+> OSPF area 0. The Ansible controller sits on the HQ management VLAN (10.10.99.0/24).
+
+---
+
 ## Purpose
 
 Hello, I'm a recent graduate with no prior hands-on experience in network automation or
@@ -166,6 +176,8 @@ iface eth0 inet static
 Installing Ansible needs internet, which the mgmt subnet can't provide until Step 4
 (real networks pre-stage the controller for exactly this reason). Temporarily give it
 internet through a **NAT** node:
+
+![Controller temporarily cabled to a NAT node for internet access](docs/temp_nat.png)
 
 ```bash
 # In GNS3: move the controller's link from AS-HQ2 G3/0 → a NAT node.
