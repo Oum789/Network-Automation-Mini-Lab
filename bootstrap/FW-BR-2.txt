@@ -1,0 +1,40 @@
+! ============================================================
+! FW-BR-2  (FortiGate VM, secondary) — paste into FW-BR-2
+!
+! Minimal HA bootstrap ONLY. The primary (FW-BR-1) syncs the FULL
+! running config (interfaces, switch, OSPF, IPsec, policies) to this
+! unit automatically AFTER it joins the cluster — do NOT paste those
+! sections here, they would just be overwritten by the sync.
+!
+! The HA block below MUST match FW-BR-1 exactly on:
+!   group-id, group-name, mode, password, hbdev
+! and have a LOWER priority so FW-BR-1 stays primary.
+!
+! Prereqs before this works:
+!   - Port10 cabled  FW-BR-1 port10 <-> FW-BR-2 port10  (HA heartbeat)
+!   - Same FortiOS version + same VM size as FW-BR-1
+!   - If multi-VDOM is on, flatten first (reboots):
+!         config system global
+!             set vdom-mode no-vdom
+!         end
+! ============================================================
+
+config system global
+    set hostname "FW-BR-2"
+end
+
+config system ha
+    set group-id 20
+    set group-name "BR-HA"
+    set mode a-p
+    set password HaSecret@BR
+    set hbdev "port10" 50
+    set session-pickup enable
+    set ha-mgmt-status enable
+    set override enable
+    set priority 100
+end
+
+! After this commits the unit renegotiates (may reboot once), then
+! verify on FW-BR-1:   get system ha status   -> should list BOTH members,
+! state in-sync. The admin password etc. arrive via sync from the primary.

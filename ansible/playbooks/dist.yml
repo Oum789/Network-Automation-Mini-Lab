@@ -1,0 +1,7 @@
+---
+- name: Dist switches — common + dist role
+  hosts: dist_switches
+  gather_facts: false
+  roles:
+    - common
+    - dist_switch

@@ -1,0 +1,40 @@
+---
+# IOSvL2 has ip routing ON by default, which makes it ignore ip default-gateway and
+# drop all off-subnet traffic as "unroutable". Access switches are pure L2 — force
+# host mode so the bootstrap's ip default-gateway is actually honoured. Idempotent
+# safety net: the bootstrap already sets this; this guards against drift.
+- name: Access — force L2/host mode (so ip default-gateway is honoured)
+  cisco.ios.ios_config:
+    lines:
+      - "no ip routing"
+
+- name: Access — create site VLANs
+  cisco.ios.ios_config:
+    parents: "vlan {{ item.id }}"
+    lines:
+      - "name {{ item.name }}"
+  loop: "{{ site_vlans }}"
+
+- name: Access — host-facing access ports
+  cisco.ios.ios_config:
+    parents: "interface {{ item.iface }}"
+    lines:
+      - "switchport mode access"
+      - "switchport access vlan {{ item.vlan }}"
+      - "spanning-tree portfast"
+      - "no shutdown"
+  loop: "{{ host_ports }}"
+
+- name: Access — uplinks as trunks with allowed VLAN list
+  cisco.ios.ios_config:
+    parents: "interface {{ item }}"
+    lines:
+      - "switchport trunk encapsulation dot1q"
+      - "switchport mode trunk"
+      - "switchport trunk allowed vlan {{ allowed_vlans_on_uplinks }}"
+      - "no shutdown"
+  loop: "{{ uplink_trunks }}"
+
+- name: Access — save
+  cisco.ios.ios_config:
+    save_when: modified

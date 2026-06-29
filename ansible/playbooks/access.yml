@@ -1,0 +1,7 @@
+---
+- name: Access switches — common + access role
+  hosts: access_switches
+  gather_facts: false
+  roles:
+    - common
+    - access_switch

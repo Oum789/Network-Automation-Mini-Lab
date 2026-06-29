@@ -1,0 +1,8 @@
+---
+# ISP routers + Internet are fully configured at bootstrap (Step 2) and are
+# intentionally NOT automated — isp.yml is left out of the run on purpose.
+# Order: dist (OSPF backbone forms), then access, then FortiGate day-1 tweaks.
+
+- import_playbook: dist.yml
+- import_playbook: access.yml
+- import_playbook: fortigate.yml

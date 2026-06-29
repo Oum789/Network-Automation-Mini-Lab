@@ -1,0 +1,87 @@
+! ============================================================
+! DS-HQ1  (IOSvL2 used as L3)  —  Day-0 bootstrap
+! Inside to FW = transit VLAN 100 (L2 access on the mesh links).
+! FW HA pair is the gateway out on 10.10.100.1.
+! Mesh cabling:
+!   G0/0 -> FW-HQ1 Port2   (access, VLAN 100)
+!   G0/1 -> FW-HQ2 Port2   (access, VLAN 100)
+! ============================================================
+enable
+configure terminal
+
+hostname DS-HQ1
+no ip domain-lookup
+ip domain name lab.local
+
+username admin privilege 15 secret Admin@123
+enable secret Admin@123
+
+crypto key generate rsa modulus 2048
+ip ssh version 2
+line vty 0 15
+ login local
+ transport input ssh
+ exec-timeout 30 0
+exit
+
+ip routing
+
+vlan 99
+ name HQ-MGMT
+vlan 100
+ name HQ-TRANSIT
+exit
+
+! inter-DS port-channel (all VLANs incl transit for HSRP/OSPF)
+interface Port-channel1
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20,30,99,100
+exit
+interface range GigabitEthernet3/0 - 1
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20,30,99,100
+ channel-group 1 mode active
+ no shutdown
+exit
+
+! downlinks to access switches
+interface range GigabitEthernet0/2 - 3
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk allowed vlan 10,20,30,99
+ no shutdown
+exit
+
+! mesh uplinks to FW pair — L2 trunks carrying transit VLAN 100
+interface GigabitEthernet0/0
+ description to-FW-HQ1-Port2
+ switchport mode access
+ switchport access vlan 100
+ no shutdown
+exit
+interface GigabitEthernet0/1
+ description to-FW-HQ2-Port2
+ switchport mode access
+ switchport access vlan 100
+ no shutdown
+exit
+
+interface Loopback0
+ ip address 10.255.0.1 255.255.255.255
+exit
+interface Vlan99
+ ip address 10.10.99.2 255.255.255.0
+ no shutdown
+exit
+interface Vlan100
+ ip address 10.10.100.2 255.255.255.248
+ no shutdown
+exit
+
+! temporary default to FW HA inside until OSPF is up
+ip route 0.0.0.0 0.0.0.0 10.10.100.1
+
+end
+write memory

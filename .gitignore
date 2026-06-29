@@ -1,0 +1,27 @@
+# Claude Code local config / permissions
+.claude/
+
+# Ansible
+*.retry
+*.log
+
+# Python / venv (controller-side)
+__pycache__/
+*.pyc
+.venv/
+ansible-env/
+
+# GNS3 + VM images — NEVER commit (multi-GB + Cisco/Fortinet license forbids redistribution)
+*.qcow2
+*.vmdk
+*.vdi
+*.iso
+*.img
+*.gns3project
+*-files/
+snapshots/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini

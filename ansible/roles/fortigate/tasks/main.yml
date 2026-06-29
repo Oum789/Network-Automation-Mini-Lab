@@ -1,0 +1,35 @@
+---
+# Bootstrap already covers HA, interfaces, IPsec, OSPF, and base policy.
+# Day-1 here is hygiene + things easier to push declaratively.
+
+- name: FortiGate — system global settings
+  fortinet.fortios.fortios_system_global:
+    vdom: root
+    system_global:
+      # Ansible targets the cluster (the primary), and hostname is NOT HA-synced,
+      # so this only renames the primary. Suffix "-1" to match the secondary's
+      # FW-x-2 bootstrap hostname → consistent FW-HQ-1/FW-HQ-2, FW-BR-1/FW-BR-2.
+      hostname: "{{ inventory_hostname }}-1"
+      timezone: "26"   # Asia/Bangkok in FortiOS timezone table
+      admin_sport: 443
+      admintimeout: 30
+
+- name: FortiGate — DNS
+  fortinet.fortios.fortios_system_dns:
+    vdom: root
+    system_dns:
+      primary: "{{ dns_servers[0] }}"
+      secondary: "{{ dns_servers[1] }}"
+      domain:
+        - { domain: "{{ domain_name }}" }
+
+- name: FortiGate — NTP
+  fortinet.fortios.fortios_system_ntp:
+    vdom: root
+    system_ntp:
+      ntpsync: "enable"
+      type: "custom"
+      syncinterval: 60
+      ntpserver:
+        - { id: 1, server: "{{ ntp_servers[0] }}" }
+        - { id: 2, server: "{{ ntp_servers[1] }}" }

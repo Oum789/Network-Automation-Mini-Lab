@@ -1,0 +1,15 @@
+---
+access_facing_trunks:
+  - GigabitEthernet0/2
+  - GigabitEthernet0/3
+
+fw_facing_trunks:
+  - GigabitEthernet0/0
+  - GigabitEthernet0/1
+
+peer_link_members:
+  - GigabitEthernet3/0
+  - GigabitEthernet3/1
+peer_link_po: 1
+
+hsrp_auth_key: "HsrpKey!2026"

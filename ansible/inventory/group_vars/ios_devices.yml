@@ -1,0 +1,10 @@
+---
+ansible_network_os: cisco.ios.ios
+ansible_connection: network_cli
+# Use paramiko, not libssh. Modern libssh dropped the SHA1 kex/host-key algorithms
+# that older Cisco IOS still relies on, causing "kex error: no match for method".
+# paramiko keeps diffie-hellman-group14-sha1 + ssh-rsa, so it negotiates fine.
+ansible_network_cli_ssh_type: paramiko
+# Old IOS images sign the SSH handshake with ssh-rsa (SHA1), not rsa-sha2.
+# Tell paramiko to allow ssh-rsa or the session dies with "No existing session".
+ansible_paramiko_use_rsa_sha2_algorithms: false

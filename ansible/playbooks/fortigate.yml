@@ -1,0 +1,6 @@
+---
+- name: FortiGates — day-1 hygiene
+  hosts: fortigates
+  gather_facts: false
+  roles:
+    - fortigate

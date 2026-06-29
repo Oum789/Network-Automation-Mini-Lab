@@ -1,0 +1,11 @@
+---
+ansible_network_os: fortinet.fortios.fortios
+ansible_connection: httpapi
+ansible_httpapi_use_ssl: true
+ansible_httpapi_validate_certs: false
+ansible_httpapi_port: 443
+
+# Day-1 additions / tweaks beyond bootstrap go here.
+# Example: extra LAN subnets to advertise into OSPF, extra
+# policies, IPS profiles, etc. Kept minimal here because the
+# bootstrap already gets FW into the OSPF + IPsec mesh.

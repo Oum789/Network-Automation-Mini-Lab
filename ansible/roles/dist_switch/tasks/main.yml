@@ -1,0 +1,131 @@
+---
+- name: Dist — VLAN database (user + mgmt + transit)
+  cisco.ios.ios_config:
+    parents: "vlan {{ item.id }}"
+    lines:
+      - "name {{ item.name }}"
+  loop: "{{ vlans }}"
+
+- name: Dist — enable L3 routing
+  cisco.ios.ios_config:
+    lines:
+      - "ip routing"
+
+- name: Dist — Loopback0
+  cisco.ios.ios_config:
+    parents: "interface Loopback0"
+    lines:
+      - "ip address {{ loopback_ip }} 255.255.255.255"
+
+- name: Dist — SVIs (HSRP on user/mgmt VLANs; transit SVI plain L3)
+  cisco.ios.ios_config:
+    parents: "interface Vlan{{ item.id }}"
+    lines: "{{ svi_lines }}"
+  vars:
+    is_active: "{{ item.id in hsrp_active_vlans }}"
+    is_transit: "{{ item.vip is none }}"
+    own_ip: "{{ item.hosts.p1 if inventory_hostname.endswith('1') else item.hosts.p2 }}"
+    svi_lines: >-
+      {{ [
+           'ip address ' ~ own_ip ~ ' ' ~ item.mask,
+           'no shutdown'
+         ]
+         + ( [
+               'standby version 2',
+               'standby ' ~ item.id ~ ' ip ' ~ item.vip,
+               'standby ' ~ item.id ~ ' priority ' ~ (110 if is_active else 100),
+               'standby ' ~ item.id ~ ' preempt',
+               'standby ' ~ item.id ~ ' authentication md5 key-string ' ~ hsrp_auth_key
+             ] if not is_transit else [] )
+      }}
+  loop: "{{ vlans }}"
+
+- name: Dist — inter-DS port-channel (all VLANs)
+  cisco.ios.ios_config:
+    parents: "interface Port-channel{{ peer_link_po }}"
+    lines:
+      - "switchport trunk encapsulation dot1q"
+      - "switchport mode trunk"
+      - "switchport trunk allowed vlan {{ vlans | map(attribute='id') | join(',') }}"
+
+- name: Dist — peer-link members
+  cisco.ios.ios_config:
+    parents: "interface {{ item }}"
+    lines:
+      - "switchport trunk encapsulation dot1q"
+      - "switchport mode trunk"
+      - "switchport trunk allowed vlan {{ vlans | map(attribute='id') | join(',') }}"
+      - "channel-group {{ peer_link_po }} mode active"
+      - "no shutdown"
+  loop: "{{ peer_link_members }}"
+
+- name: Dist — access-facing trunks (no transit VLAN)
+  cisco.ios.ios_config:
+    parents: "interface {{ item }}"
+    lines:
+      - "switchport trunk encapsulation dot1q"
+      - "switchport mode trunk"
+      - "switchport trunk allowed vlan {{ vlans | rejectattr('id','equalto',transit_vlan_id) | map(attribute='id') | join(',') }}"
+      - "no shutdown"
+  loop: "{{ access_facing_trunks }}"
+
+- name: Dist — FW-facing mesh links (access, untagged — FortiGate inside-sw expects untagged)
+  cisco.ios.ios_config:
+    parents: "interface {{ item }}"
+    lines:
+      - "switchport mode access"
+      - "switchport access vlan {{ transit_vlan_id }}"
+      - "no shutdown"
+  loop: "{{ fw_facing_trunks }}"
+
+- name: Dist — OSPF
+  cisco.ios.ios_config:
+    parents: "router ospf {{ ospf_process_id }}"
+    lines: "{{ ospf_lines }}"
+  vars:
+    user_nets: "{{ vlans | selectattr('vip','ne',None) | list }}"
+    ospf_lines: >-
+      {{ [
+           'router-id ' ~ router_id,
+           'passive-interface default',
+           'no passive-interface Vlan' ~ transit_vlan_id,
+           'area ' ~ ospf_area ~ ' authentication message-digest',
+           'network ' ~ loopback_ip ~ ' 0.0.0.0 area ' ~ ospf_area,
+           'network ' ~ (transit_ip | ansible.utils.ipaddr('network')) ~ ' 0.0.0.7 area ' ~ ospf_area
+         ]
+         + (user_nets | map(attribute='subnet')
+                       | map('ansible.utils.ipaddr','network')
+                       | zip(user_nets | map(attribute='subnet') | map('ansible.utils.ipaddr','hostmask'))
+                       | map('join',' ')
+                       | map('regex_replace','^','network ')
+                      | map('regex_replace','$',' area ' ~ ospf_area)
+                       | list) }}
+
+- name: Dist — OSPF MD5 on transit SVI
+  cisco.ios.ios_config:
+    parents: "interface Vlan{{ transit_vlan_id }}"
+    lines:
+      - "ip ospf message-digest-key {{ ospf_md5_key_id }} md5 {{ ospf_md5_key }}"
+      - "ip ospf hello-interval 10"
+
+# Don't pull the rug from under our own mgmt session. At the remote (BR) site the
+# return path to the controller rides the default route until OSPF converges, so we
+# must NOT remove it until the FW adjacency is FULL (LSDB synced, routes installed).
+# At HQ this is a no-op safety net (controller is L2-local to the mgmt VLAN).
+- name: Dist — wait for OSPF adjacency to the FW before removing the default route
+  cisco.ios.ios_command:
+    commands:
+      - show ip ospf neighbor
+    wait_for:
+      - "result[0] contains FULL"
+    retries: 20
+    interval: 5
+
+- name: Dist — remove temp static default (OSPF has taken over)
+  cisco.ios.ios_config:
+    lines:
+      - "no ip route 0.0.0.0 0.0.0.0 {{ fw_transit_ip }}"
+
+- name: Dist — save
+  cisco.ios.ios_config:
+    save_when: modified

@@ -1,0 +1,6 @@
+---
+site_vlans: "{{ vlans_hq }}"
+allowed_vlans_on_uplinks: "10,20,30,99"
+host_ports:
+  - { iface: GigabitEthernet1/0, vlan: 20  }   # PC2
+  - { iface: GigabitEthernet3/0, vlan: 99  }   # Controller (Ansible)

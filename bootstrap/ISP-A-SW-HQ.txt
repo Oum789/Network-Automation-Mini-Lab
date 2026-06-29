@@ -1,0 +1,47 @@
+! ============================================================
+! ISP-A-SW-HQ  (IOSvL2)  —  Day-0 bootstrap
+! L2 switch bridging the ISP-A-HQ /30 segment so the FW HA pair
+! can share one WAN IP.
+!   G0/0 -> FW-HQ-1 Port4
+!   G0/1 -> FW-HQ-2 Port4
+!   G0/2 -> ISP-A-HQ G0/2
+! All ports in VLAN 64 (the WAN segment). Mgmt SVI for Ansible.
+! ============================================================
+enable
+configure terminal
+
+hostname ISP-A-SW-HQ
+no ip domain-lookup
+ip domain name lab.local
+
+username admin privilege 15 secret Admin@123
+enable secret Admin@123
+
+crypto key generate rsa modulus 2048
+ip ssh version 2
+line vty 0 15
+ login local
+ transport input ssh
+ exec-timeout 30 0
+exit
+
+vlan 64
+ name WAN-ISP-A-HQ
+exit
+
+interface range GigabitEthernet0/0 - 2
+ switchport mode access
+ switchport access vlan 64
+ spanning-tree portfast
+ no shutdown
+exit
+
+! mgmt — reachable in-band on the WAN /30 segment is messy; instead
+! give it an isolated mgmt IP on the WAN VLAN so Ansible can SSH it.
+! (Public 100.64.10.0/30 only has .1/.2 used; .3 is broadcast on /30,
+!  so we cannot host mgmt there. Use a separate mgmt VLAN trunk back
+!  to ISP-A-HQ is overkill for a lab — manage this switch via console
+!  or temporarily widen the segment. For now, no mgmt IP.)
+
+end
+write memory

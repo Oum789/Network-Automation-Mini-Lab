@@ -1,0 +1,5 @@
+---
+site_vlans: "{{ vlans_br }}"
+allowed_vlans_on_uplinks: "110,120,199"
+host_ports:
+  - { iface: GigabitEthernet1/0, vlan: 110 }   # PC3

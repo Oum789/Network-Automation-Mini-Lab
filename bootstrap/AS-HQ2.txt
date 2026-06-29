@@ -1,0 +1,63 @@
+! ============================================================
+! AS-HQ2  (IOSvL2)  —  Day-0 bootstrap
+! Note: G3/0 connects to the Controller (Ansible) — placed in VLAN 99
+!       so the controller sits on the mgmt network and can SSH to
+!       every device on 10.10.99.0/24 / 10.255.0.0/16.
+! ============================================================
+enable
+configure terminal
+
+hostname AS-HQ2
+no ip domain-lookup
+ip domain name lab.local
+
+username admin privilege 15 secret Admin@123
+enable secret Admin@123
+
+crypto key generate rsa modulus 2048
+ip ssh version 2
+line vty 0 15
+ login local
+ transport input ssh
+ exec-timeout 30 0
+exit
+
+vlan 99
+ name HQ-MGMT
+exit
+
+! --- uplinks to DS-HQ1 (G0/0) and DS-HQ2 (G0/1) as trunks ---
+interface range GigabitEthernet0/0 - 1
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk allowed vlan 99
+ no shutdown
+exit
+
+! --- access port for Ansible controller on G3/0 ---
+interface GigabitEthernet3/0
+ switchport mode access
+ switchport access vlan 99
+ spanning-tree portfast
+ no shutdown
+exit
+
+interface Vlan99
+ ip address 10.10.99.12 255.255.255.0
+ no shutdown
+exit
+! IOSvL2 ships with ip routing ON → it would IGNORE ip default-gateway. It happens to
+! not matter at HQ (the controller is in this same VLAN 99 subnet), but force host mode
+! anyway so behaviour matches the BR access switches and stays correct if that changes.
+no ip routing
+ip default-gateway 10.10.99.1
+
+end
+write memory
+
+! ============================================================
+! On the Controller (Ubuntu/etc) set:
+!   IP   : 10.10.99.20/24
+!   GW   : 10.10.99.1
+!   DNS  : 8.8.8.8 (or whatever)
+! ============================================================

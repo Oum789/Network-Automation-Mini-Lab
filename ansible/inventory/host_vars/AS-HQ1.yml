@@ -1,0 +1,8 @@
+---
+site_vlans: "{{ vlans_hq }}"
+user_vlan: 10                 # G1/0 (PC1) — VLAN 10
+server_vlan: 30               # G2/0 (WSV) — VLAN 30
+allowed_vlans_on_uplinks: "10,20,30,99"
+host_ports:
+  - { iface: GigabitEthernet1/0, vlan: 10  }
+  - { iface: GigabitEthernet2/0, vlan: 30  }

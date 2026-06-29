@@ -1,0 +1,243 @@
+! ============================================================
+! FW-HQ  (FortiGate VM, FortiOS 7.x) — paste into FW-HQ-1
+! Transit-VLAN inside design + A/P HA.
+!
+! Cabling (both chassis identical — HA syncs config):
+!   Port2  -> DS (mesh, transit VLAN 100)
+!   Port3  -> DS (mesh, transit VLAN 100)
+!   Port4  -> ISP-A-SW-HQ  (wan1, 100.64.10.0/30)
+!   Port5  -> ISP-B-SW-HQ  (wan2, 100.64.20.0/30)
+!   Port10 -> HA heartbeat
+!
+! Port2 + Port3 are bound into a hardware/software switch so both
+! mesh links land on ONE L3 inside interface = 10.10.100.1.
+!
+! IMPORTANT — run this FIRST if your FortiOS came with multi-VDOM on
+! (symptom: "Attribute 'vdom' MUST be set" errors). It flattens the
+! box to single-VDOM so the rest of this file pastes cleanly:
+!
+!     config system global
+!         set vdom-mode no-vdom
+!     end
+!
+! The FW reboots, then log back in and paste everything below.
+! ============================================================
+
+config system global
+    set hostname "FW-HQ-1"
+    set admin-sport 443
+end
+
+config system admin
+    edit "admin"
+        set accprofile "super_admin"
+        set password Admin@123
+    next
+end
+
+config system ha
+    set group-id 10
+    set group-name "HQ-HA"
+    set mode a-p
+    set password HaSecret@HQ
+    set hbdev "port10" 50
+    set session-pickup enable
+    set ha-mgmt-status enable
+    set override enable
+    set priority 200
+end
+
+! ---- Inside software-switch spanning the two mesh ports ----
+config system switch-interface
+    edit "inside-sw"
+        set vdom "root"
+        set type switch
+        set member "port2" "port3"
+    next
+end
+
+config system interface
+    ! Forward STP BPDUs across the software switch so the DS pair can SEE the
+    ! transit-VLAN loop (Po1 + this bridge) and block one path. Without this the
+    ! FW silently eats BPDUs → STP is blind → broadcast storm pegs the DS CPUs.
+    edit "port2"
+        set stpforward enable
+    next
+    edit "port3"
+        set stpforward enable
+    next
+    edit "inside-sw"
+        set ip 10.10.100.1 255.255.255.248
+        set allowaccess ping ssh https
+        set alias "inside-transit-v100"
+    next
+    edit "port4"
+        set alias "wan1-ispA"
+        set mode static
+        set ip 100.64.10.2 255.255.255.252
+        set allowaccess ping
+    next
+    edit "port5"
+        set alias "wan2-ispB"
+        set mode static
+        set ip 100.64.20.2 255.255.255.252
+        set allowaccess ping
+    next
+    edit "lo-mgmt"
+	set vdom "root"
+        set type loopback
+        set ip 10.255.0.21 255.255.255.255
+        set allowaccess ping ssh https
+    next
+end
+
+config router static
+    edit 1
+        set gateway 100.64.10.1
+        set device "port4"
+        set priority 10
+    next
+    edit 2
+        set gateway 100.64.20.1
+        set device "port5"
+        set priority 10
+    next
+end
+
+! ---- IPsec ----
+config vpn ipsec phase1-interface
+    edit "vpn-a"
+        set interface "port4"
+        set local-gw 100.64.10.2
+        set remote-gw 100.64.110.2
+        set proposal aes256-sha256
+        set dhgrp 14
+        set psksecret PskVpnA@2026
+    next
+    edit "vpn-b"
+        set interface "port5"
+        set local-gw 100.64.20.2
+        set remote-gw 100.64.120.2
+        set proposal aes256-sha256
+        set dhgrp 14
+        set psksecret PskVpnB@2026
+    next
+end
+config vpn ipsec phase2-interface
+    edit "vpn-a-p2"
+        set phase1name "vpn-a"
+        set proposal aes256-sha256
+    next
+    edit "vpn-b-p2"
+        set phase1name "vpn-b"
+        set proposal aes256-sha256
+    next
+end
+
+config system interface
+    edit "vpn-a"
+        set ip 169.254.1.1 255.255.255.255
+        set remote-ip 169.254.1.2 255.255.255.252
+        set allowaccess ping
+    next
+    edit "vpn-b"
+        set ip 169.254.2.1 255.255.255.255
+        set remote-ip 169.254.2.2 255.255.255.252
+        set allowaccess ping
+    next
+end
+
+! ---- OSPF area 0 ----
+config router ospf
+    set router-id 10.255.0.21
+    set default-information-originate always
+    config area
+        edit 0.0.0.0
+        next
+    end
+    config network
+        edit 1
+            set prefix 10.10.100.0 255.255.255.248
+            set area 0.0.0.0
+        next
+        edit 2
+            set prefix 169.254.1.0 255.255.255.252
+            set area 0.0.0.0
+        next
+        edit 3
+            set prefix 169.254.2.0 255.255.255.252
+            set area 0.0.0.0
+        next
+        edit 4
+            set prefix 10.255.0.21 255.255.255.255
+            set area 0.0.0.0
+        next
+    end
+    config ospf-interface
+        edit "inside-sw"
+            set interface "inside-sw"
+            set network-type broadcast
+            set hello-interval 10
+            set authentication message-digest
+            config md5-keys
+                edit 1
+                    set key-string "OspfArea0Key!"
+                next
+            end
+        next
+        edit "vpn-a"
+            set interface "vpn-a"
+            set network-type point-to-point
+        next
+        edit "vpn-b"
+            set interface "vpn-b"
+            set network-type point-to-point
+        next
+    end
+end
+
+! ---- Policies ----
+config firewall policy
+    edit 1
+        set name "inside-to-wan1"
+        set srcintf "inside-sw"
+        set dstintf "port4"
+        set srcaddr "all"
+        set dstaddr "all"
+        set action accept
+        set schedule "always"
+        set service "ALL"
+        set nat enable
+    next
+    edit 2
+        set name "inside-to-wan2"
+        set srcintf "inside-sw"
+        set dstintf "port5"
+        set srcaddr "all"
+        set dstaddr "all"
+        set action accept
+        set schedule "always"
+        set service "ALL"
+        set nat enable
+    next
+    edit 3
+        set name "inside-to-branch"
+        set srcintf "inside-sw"
+        set dstintf "vpn-a" "vpn-b"
+        set srcaddr "all"
+        set dstaddr "all"
+        set action accept
+        set schedule "always"
+        set service "ALL"
+    next
+    edit 4
+        set name "branch-to-inside"
+        set srcintf "vpn-a" "vpn-b"
+        set dstintf "inside-sw"
+        set srcaddr "all"
+        set dstaddr "all"
+        set action accept
+        set schedule "always"
+        set service "ALL"
+    next
+end

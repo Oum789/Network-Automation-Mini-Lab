@@ -1,0 +1,12 @@
+---
+router_id: 10.255.0.1
+loopback_ip: 10.255.0.1
+mgmt_vlan_id: 99
+mgmt_ip: 10.10.99.2
+transit_vlan_id: 100
+transit_ip: 10.10.100.2
+fw_transit_ip: 10.10.100.1
+
+vlans: "{{ vlans_hq }}"
+hsrp_active_vlans: [10, 30, 99]
+hsrp_standby_vlans: [20]

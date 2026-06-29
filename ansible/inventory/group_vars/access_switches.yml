@@ -1,0 +1,10 @@
+---
+# downlink ports that face end hosts — set to access port in user VLAN
+host_facing_ports:
+  - { iface: GigabitEthernet1/0, vlan: default_user }
+  - { iface: GigabitEthernet2/0, vlan: default_user }
+
+# uplink trunks
+uplink_trunks:
+  - GigabitEthernet0/0
+  - GigabitEthernet0/1

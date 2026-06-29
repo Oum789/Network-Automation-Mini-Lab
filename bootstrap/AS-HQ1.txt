@@ -1,0 +1,52 @@
+! ============================================================
+! AS-HQ1  (IOSvL2)  —  Day-0 bootstrap
+! Goal: hostname, mgmt IP on VLAN 99, SSH+local user, default-gw.
+! Day-1 (VLANs, access ports, trunk pruning) handled by Ansible.
+! ============================================================
+enable
+configure terminal
+
+hostname AS-HQ1
+no ip domain-lookup
+ip domain name lab.local
+
+! --- local user + enable ---
+username admin privilege 15 secret Admin@123
+enable secret Admin@123
+
+! --- SSH only ---
+crypto key generate rsa modulus 2048
+ip ssh version 2
+line vty 0 15
+ login local
+ transport input ssh
+ exec-timeout 30 0
+exit
+
+! --- minimum VLANs to bring mgmt up; Ansible will push the full set ---
+vlan 99
+ name HQ-MGMT
+exit
+
+! --- uplinks to DS-HQ1 (G0/0) and DS-HQ2 (G0/1) as trunks ---
+interface range GigabitEthernet0/0 - 1
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+ switchport trunk allowed vlan 99
+ no shutdown
+exit
+
+! --- mgmt SVI ---
+interface Vlan99
+ ip address 10.10.99.11 255.255.255.0
+ no shutdown
+exit
+! IOSvL2 ships with ip routing ON → it would IGNORE ip default-gateway. It happens to
+! not matter at HQ (the controller is in this same VLAN 99 subnet), but force host mode
+! anyway so behaviour matches the BR access switches and stays correct if that changes.
+no ip routing
+ip default-gateway 10.10.99.1
+
+! --- save ---
+end
+write memory
